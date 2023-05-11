@@ -1,187 +1,438 @@
-# TBD Workshop 1.
+# terraform-docs
 
-## Workshop goals
-1. Learn how to provision computing resources for running Big Data analyses using the Infrastructure as Code (IaC) approach.
-2. Learn how to set up opinionated CI/CD pipelines to deploy cloud infrastructure. 
-3. Learn how to utilize linters for detecting security vulnerabilities in cloud infrastructure.
-4. Learn how to run Apache Spark code in a distributed way on Hadoop cluster using
-Vertex AI notebooks and Dataproc services on GCP.
-5. Learn how to use Workload Identity Federation for a secure authentication from GitHub Actions
-to Google Cloud.
-![img.png](doc/figures/workload_id_federation.png)
-## High level architecture
-![img.png](doc/figures/hla.png)
-## Prerequisites
-### Software
-* Google Cloud SDK ~>424.0.0
-* gsutil ~>5.21
-* pre-commit ~>2.15.0
-* Terraform ~>1.4.0
-* Python ~>3.8
-* Linux/MacOS
-* [pre-commit-terraform dependencies](https://github.com/antonbabenko/pre-commit-terraform)
+[![Build Status](https://github.com/terraform-docs/terraform-docs/workflows/ci/badge.svg)](https://github.com/terraform-docs/terraform-docs/actions) [![GoDoc](https://pkg.go.dev/badge/github.com/terraform-docs/terraform-docs)](https://pkg.go.dev/github.com/terraform-docs/terraform-docs) [![Go Report Card](https://goreportcard.com/badge/github.com/terraform-docs/terraform-docs)](https://goreportcard.com/report/github.com/terraform-docs/terraform-docs) [![Codecov Report](https://codecov.io/gh/terraform-docs/terraform-docs/branch/master/graph/badge.svg)](https://codecov.io/gh/terraform-docs/terraform-docs) [![License](https://img.shields.io/github/license/terraform-docs/terraform-docs)](https://github.com/terraform-docs/terraform-docs/blob/master/LICENSE) [![Latest release](https://img.shields.io/github/v/release/terraform-docs/terraform-docs)](https://github.com/terraform-docs/terraform-docs/releases)
 
-### GCP
-* Redeem a GCP coupon to create a billing account
-* Authenticate to GCP to obtain the default credentials used for running the code
-```bash
-# first remove the stored credentials if exist
-gcloud auth application-default revoke
-# login and get the new application credentials
-gcloud auth application-default login
-```
-## Project setup
-1. Export shared environment variables
-```bash
-export TF_VAR_tbd_semester=2023L
-# format: 20xx for teachers, student ID number for students 
-export TF_VAR_user_id=2003
-# use your own billing account id
-export TF_VAR_billing_account=016F99-F0B167-9A895D
+![terraform-docs-teaser](./images/terraform-docs-teaser.png)
 
-```
-2. Enter `bootstrap` folder then init project and Terraform state bucket
+Sponsored by [Scalr - Terraform Automation & Collaboration Software](https://scalr.com/?utm_source=terraform-docs)
+
+<a href="https://www.scalr.com/?utm_source=terraform-docs" target="_blank"><img src="https://bit.ly/2T7Qm3U" alt="Scalr - Terraform Automation & Collaboration Software" width="175" height="40" /></a>
+
+## What is terraform-docs
+
+A utility to generate documentation from Terraform modules in various output formats.
+
+## Installation
+
+macOS users can install using [Homebrew]:
+
 ```bash
-cd bootstrap
-terraform init
-terraform apply
-cd ..
-```
-3. CI/CD (Github Actions setup using [Workload Identity Federation](https://cloud.google.com/blog/products/identity-security/enabling-keyless-authentication-from-github-actions))
-* Edit `env/backend.tfvars` file and set `bucket` variable with the Terraform state bucket
-* Edit `env/project.tfvars` file and set `project_name`, `iac_service_account` variables using the output from the `bootstrap` phase, e.g.:
-![img.png](doc/figures/bootstrap-output.png)
-* Edit `cicd_bootstrap/conf/github_actions.tfvars` to set `github_org` and `github_repo`, e.g.:
-```text
-  github_org  = "mwiewior"
-  github_repo = "tbd-workshop-1-public"
-```
-* Init state file and set env variables
-```bash
-cd cicd_bootstrap
-terraform init -backend-config=../env/backend.tfvars
-```
-* Apply
-```bash
-# authenticate Docker backend with GCP
-gcloud auth configure-docker
-# create CI/CD integration using Workload Identity
-terraform apply -var-file ../env/project.tfvars -var-file conf/github_actions.tfvars -compact-warnings
-cd ..
+brew install terraform-docs
 ```
 
-4. Use output variables for configuring Github Actions workflow: `.github/workflows/pull-request.yml`,e.g. :
-![img.png](doc/figures/workload-identity.png)
-Please do not edit and hardcode these values in a YAML but set the Github Actions secrets instead
-while preserving the secret names, i.e. `GCP_WORKLOAD_IDENTITY_PROVIDER_NAME` and `GCP_WORKLOAD_IDENTITY_SA_EMAIL`.
-![img.png](doc/figures/secrets.png)
+or
 
-5. Install and configure `pre-commit`
+```bash
+brew install terraform-docs/tap/terraform-docs
+```
+
+Windows users can install using [Scoop]:
+
+```bash
+scoop bucket add terraform-docs https://github.com/terraform-docs/scoop-bucket
+scoop install terraform-docs
+```
+
+or [Chocolatey]:
+
+```bash
+choco install terraform-docs
+```
+
+Stable binaries are also available on the [releases] page. To install, download the
+binary for your platform from "Assets" and place this into your `$PATH`:
+
+```bash
+curl -Lo ./terraform-docs.tar.gz https://github.com/terraform-docs/terraform-docs/releases/download/v0.16.0/terraform-docs-v0.16.0-$(uname)-amd64.tar.gz
+tar -xzf terraform-docs.tar.gz
+chmod +x terraform-docs
+mv terraform-docs /usr/local/terraform-docs
+```
+
+**NOTE:** Windows releases are in `ZIP` format.
+
+The latest version can be installed using `go install` or `go get`:
+
+```bash
+# go1.17+
+go install github.com/terraform-docs/terraform-docs@v0.16.0
+```
+
+```bash
+# go1.16
+GO111MODULE="on" go get github.com/terraform-docs/terraform-docs@v0.16.0
+```
+
+**NOTE:** please use the latest Go to do this, minimum `go1.16` is required.
+
+This will put `terraform-docs` in `$(go env GOPATH)/bin`. If you encounter the error
+`terraform-docs: command not found` after installation then you may need to either add
+that directory to your `$PATH` as shown [here] or do a manual installation by cloning
+the repo and run `make build` from the repository which will put `terraform-docs` in:
+
+```bash
+$(go env GOPATH)/src/github.com/terraform-docs/terraform-docs/bin/$(uname | tr '[:upper:]' '[:lower:]')-amd64/terraform-docs
+```
+
+## Usage
+
+### Running the binary directly
+
+To run and generate documentation into README within a directory:
+
+```bash
+terraform-docs markdown table --output-file README.md --output-mode inject /path/to/module
+```
+
+Check [`output`] configuration for more details and examples.
+
+### Using docker
+
+terraform-docs can be run as a container by mounting a directory with `.tf`
+files in it and run the following command:
+
+```bash
+docker run --rm --volume "$(pwd):/terraform-docs" -u $(id -u) quay.io/terraform-docs/terraform-docs:0.16.0 markdown /terraform-docs
+```
+
+If `output.file` is not enabled for this module, generated output can be redirected
+back to a file:
+
+```bash
+docker run --rm --volume "$(pwd):/terraform-docs" -u $(id -u) quay.io/terraform-docs/terraform-docs:0.16.0 markdown /terraform-docs > doc.md
+```
+
+**NOTE:** Docker tag `latest` refers to _latest_ stable released version and `edge`
+refers to HEAD of `master` at any given point in time.
+
+### Using GitHub Actions
+
+To use terraform-docs GitHub Action, configure a YAML workflow file (e.g.
+`.github/workflows/documentation.yml`) with the following:
+
+```yaml
+name: Generate terraform docs
+on:
+  - pull_request
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: ${{ github.event.pull_request.head.ref }}
+
+    - name: Render terraform docs and push changes back to PR
+      uses: terraform-docs/gh-actions@main
+      with:
+        working-dir: .
+        output-file: README.md
+        output-method: inject
+        git-push: "true"
+```
+
+Read more about [terraform-docs GitHub Action] and its configuration and
+examples.
+
+### pre-commit hook
+
+With pre-commit, you can ensure your Terraform module documentation is kept
+up-to-date each time you make a commit.
+
+First [install pre-commit] and then create or update a `.pre-commit-config.yaml`
+in the root of your Git repo with at least the following content:
+
+```yaml
+repos:
+  - repo: https://github.com/terraform-docs/terraform-docs
+    rev: "v0.16.0"
+    hooks:
+      - id: terraform-docs-go
+        args: ["markdown", "table", "--output-file", "README.md", "./mymodule/path"]
+```
+
+Then run:
+
 ```bash
 pre-commit install
+pre-commit install-hooks
 ```
 
-6. Run all linters locally:
-```bash
-pre-commit run --all-files --config .pre-commit-config.yaml --verbose
-```
-**TASKS to do**
-* If pre-commit linters report any issues please try to **fix** them :hammer_and_wrench:.
+Further changes to your module's `.tf` files will cause an update to documentation
+when you make a commit.
 
-```text
-(base) ➜  tbd-workshop-1-public git:(feat/init-workshop-1) ✗ pre-commit run --all-files --config .pre-commit-config.yaml
-Terraform fmt............................................................Passed
-Terraform validate.......................................................Passed
-Terraform docs...........................................................Passed
-Terraform validate with tflint...........................................Passed
-Checkov..................................................................Failed
-- hook id: terraform_checkov
-- exit code: 1
+## Configuration
 
-terraform scan results:
+terraform-docs can be configured with a yaml file. The default name of this file is
+`.terraform-docs.yml` and the path order for locating it is:
 
-Passed checks: 44, Failed checks: 1, Skipped checks: 14
+1. root of module directory
+1. `.config/` folder at root of module directory
+1. current directory
+1. `.config/` folder at current directory
+1. `$HOME/.tfdocs.d/`
 
-Check: CKV_GCP_89: "Ensure Vertex AI instances are private"
-        FAILED for resource: module.vertex_ai_workbench.google_notebooks_instance.tbd_notebook
-        File: /modules/vertex-ai-workbench/main.tf:48-61
-        Calling File: /main.tf:29-39
-        Guide: https://docs.bridgecrew.io/docs/ensure-gcp-vertex-ai-workbench-does-not-have-public-ips
+```yaml
+formatter: "" # this is required
 
-                48 | resource "google_notebooks_instance" "tbd_notebook" {
-                49 |   depends_on   = [google_project_service.notebooks]
-                50 |   location     = local.zone
-                51 |   machine_type = "e2-standard-2"
-                52 |   name         = "${var.project_name}-notebook"
-                53 |   container_image {
-                54 |     repository = var.ai_notebook_image_repository
-                55 |     tag        = var.ai_notebook_image_tag
-                56 |   }
-                57 |   network             = var.network
-                58 |   subnet              = var.subnet
-                59 |   instance_owners     = [var.ai_notebook_instance_owner]
-                60 |   post_startup_script = "gs://${google_storage_bucket_object.post-startup.bucket}/${google_storage_bucket_object.post-startup.name}"
-                61 | }
+version: ""
 
-dockerfile scan results:
+header-from: main.tf
+footer-from: ""
 
-Passed checks: 103, Failed checks: 1, Skipped checks: 2
+recursive:
+  enabled: false
+  path: modules
 
-Check: CKV_DOCKER_1: "Ensure port 22 is not exposed"
-        FAILED for resource: /modules/docker_image/resources/Dockerfile.EXPOSE
-        File: /modules/docker_image/resources/Dockerfile:30-30
-        Guide: https://docs.bridgecrew.io/docs/ensure-port-22-is-not-exposed
+sections:
+  hide: []
+  show: []
 
-                30 | EXPOSE 8080 16384 16385 4040 22
-github_actions scan results:
+content: ""
 
-Passed checks: 99, Failed checks: 0, Skipped checks: 0
+output:
+  file: ""
+  mode: inject
+  template: |-
+    <!-- BEGIN_TF_DOCS -->
+    {{ .Content }}
+    <!-- END_TF_DOCS -->
 
+output-values:
+  enabled: false
+  from: ""
 
+sort:
+  enabled: true
+  by: name
 
-
-Lint Dockerfiles.........................................................Failed
-- hook id: hadolint
-- exit code: 1
-
-modules/docker_image/resources/Dockerfile:22 DL3013 warning: Pin versions in pip. Instead of `pip install <package>` use `pip install <package>==<version>` or `pip install --requirement <requirements file>`
-
-```
-* Modify Terraform code to use your custom Docker image in Vertex AI Workbench
-
-Commit changes, push to a branch and open a PR to **YOUR** repository main/master branch.
-If you see a warning like this -- please enable the workflows:
-![img.png](doc/figures/workflow.png)
-...and repush your changes!
-
-Once all Pull Requests checks **have passed** please merge your PR and wait until your release job finishes.
-7. Navigate to the Vertex AI Workbench menu item, find your notebook on the list, press **CONNECT** and follow
-the instructions
-![img.png](doc/figures/workbench.png)
-
-8. In your Jupyterlab enviroment add Python3.8 kernel:
-```bash
-python3.8 -m ipykernel install --user --name pyspark
-```
-9. Run a `Hello-world` PySpark application in a YARN-client mode:
-![img.png](doc/figures/pyspark.png)
-
-10. Additional tasks using Terraform:
-<ol type="a">
- <li>Add support for arbitrary machine types and worker nodes for a Dataproc cluster and JupyterLab instance</li>
- <li>Add support for preemptible/spot instances in a Dataproc cluster</li>
- <li>Perform additional hardening of Jupyterlab environment, i.e. disable sudo access and enable secure boot</li>
- <li>(Optional) Get access to Apache Spark WebUI</li>
-</ol>
-
-11. **IMPORTANT**
-:exclamation: :exclamation: :exclamation: Please remember to **destroy all** the resources after the workshop:
-
-```bash
-terraform init -backend-config=env/backend.tfvars
-terraform destroy -no-color -var-file env/project.tfvars 
+settings:
+  anchor: true
+  color: true
+  default: true
+  description: false
+  escape: true
+  hide-empty: false
+  html: true
+  indent: 2
+  lockfile: true
+  read-comments: true
+  required: true
+  sensitive: true
+  type: true
 ```
 
+## Content Template
+
+Generated content can be customized further away with `content` in configuration.
+If the `content` is empty the default order of sections is used.
+
+Compatible formatters for customized content are `asciidoc` and `markdown`. `content`
+will be ignored for other formatters.
+
+`content` is a Go template with following additional variables:
+
+- `{{ .Header }}`
+- `{{ .Footer }}`
+- `{{ .Inputs }}`
+- `{{ .Modules }}`
+- `{{ .Outputs }}`
+- `{{ .Providers }}`
+- `{{ .Requirements }}`
+- `{{ .Resources }}`
+
+and following functions:
+
+- `{{ include "relative/path/to/file" }}`
+
+These variables are the generated output of individual sections in the selected
+formatter. For example `{{ .Inputs }}` is Markdown Table representation of _inputs_
+when formatter is set to `markdown table`.
+
+Note that sections visibility (i.e. `sections.show` and `sections.hide`) takes
+precedence over the `content`.
+
+Additionally there's also one extra special variable avaialble to the `content`:
+
+- `{{ .Module }}`
+
+As opposed to the other variables mentioned above, which are generated sections
+based on a selected formatter, the `{{ .Module }}` variable is just a `struct`
+representing a [Terraform module].
+
+````yaml
+content: |-
+  Any arbitrary text can be placed anywhere in the content
+
+  {{ .Header }}
+
+  and even in between sections
+
+  {{ .Providers }}
+
+  and they don't even need to be in the default order
+
+  {{ .Outputs }}
+
+  include any relative files
+
+  {{ include "relative/path/to/file" }}
+
+  {{ .Inputs }}
+
+  # Examples
+
+  ```hcl
+  {{ include "examples/foo/main.tf" }}
+  ```
+
+  ## Resources
+
+  {{ range .Module.Resources }}
+  - {{ .GetMode }}.{{ .Spec }} ({{ .Position.Filename }}#{{ .Position.Line }})
+  {{- end }}
+````
+
+## Build on top of terraform-docs
+
+terraform-docs primary use-case is to be utilized as a standalone binary, but
+some parts of it is also available publicly and can be imported in your project
+as a library.
+
+```go
+import (
+    "github.com/terraform-docs/terraform-docs/format"
+    "github.com/terraform-docs/terraform-docs/print"
+    "github.com/terraform-docs/terraform-docs/terraform"
+)
+
+// buildTerraformDocs for module root `path` and provided content `tmpl`.
+func buildTerraformDocs(path string, tmpl string) (string, error) {
+    config := print.DefaultConfig()
+    config.ModuleRoot = path // module root path (can be relative or absolute)
+
+    module, err := terraform.LoadWithOptions(config)
+    if err != nil {
+        return "", err
+    }
+
+    // Generate in Markdown Table format
+    formatter := format.NewMarkdownTable(config)
+
+    if err := formatter.Generate(module); err != nil {
+        return "", err
+    }
+
+    // // Note: if you don't intend to provide additional template for the generated
+    // // content, or the target format doesn't provide templating (e.g. json, yaml,
+    // // xml, or toml) you can use `Content()` function instead of `Render()`.
+    // // `Content()` returns all the sections combined with predefined order.
+    // return formatter.Content(), nil
+
+    return formatter.Render(tmpl)
+}
+```
+
+## Plugin
+
+Generated output can be heavily customized with [`content`], but if using that
+is not enough for your use-case, you can write your own plugin.
+
+In order to install a plugin the following steps are needed:
+
+- download the plugin and place it in `~/.tfdocs.d/plugins` (or `./.tfdocs.d/plugins`)
+- make sure the plugin file name is `tfdocs-format-<NAME>`
+- modify [`formatter`] of `.terraform-docs.yml` file to be `<NAME>`
+
+**Important notes:**
+
+- if the plugin file name is different than the example above, terraform-docs won't
+be able to to pick it up nor register it properly
+- you can only use plugin thorough `.terraform-docs.yml` file and it cannot be used
+with CLI arguments
+
+To create a new plugin create a new repository called `tfdocs-format-<NAME>` with
+following `main.go`:
+
+```go
+package main
+
+import (
+    _ "embed" //nolint
+
+    "github.com/terraform-docs/terraform-docs/plugin"
+    "github.com/terraform-docs/terraform-docs/print"
+    "github.com/terraform-docs/terraform-docs/template"
+    "github.com/terraform-docs/terraform-docs/terraform"
+)
+
+func main() {
+    plugin.Serve(&plugin.ServeOpts{
+        Name:    "<NAME>",
+        Version: "0.1.0",
+        Printer: printerFunc,
+    })
+}
+
+//go:embed sections.tmpl
+var tplCustom []byte
+
+// printerFunc the function being executed by the plugin client.
+func printerFunc(config *print.Config, module *terraform.Module) (string, error) {
+    tpl := template.New(config,
+        &template.Item{Name: "custom", Text: string(tplCustom)},
+    )
+
+    rendered, err := tpl.Render("custom", module)
+    if err != nil {
+        return "", err
+    }
+
+    return rendered, nil
+}
+```
+
+Please refer to [tfdocs-format-template] for more details. You can create a new
+repository from it by clicking on `Use this template` button.
+
+## Documentation
+
+- **Users**
+  - Read the [User Guide] to learn how to use terraform-docs
+  - Read the [Formats Guide] to learn about different output formats of terraform-docs
+  - Refer to [Config File Reference] for all the available configuration options
+- **Developers**
+  - Read [Contributing Guide] before submitting a pull request
+
+Visit [our website] for all documentation.
+
+## Community
+
+- Discuss terraform-docs on [Slack]
+
+## License
+
+MIT License - Copyright (c) 2021 The terraform-docs Authors.
+
+[Chocolatey]: https://www.chocolatey.org
+[Config File Reference]: https://terraform-docs.io/user-guide/configuration/
+[`content`]: https://terraform-docs.io/user-guide/configuration/content/
+[Contributing Guide]: CONTRIBUTING.md
+[Formats Guide]: https://terraform-docs.io/reference/terraform-docs/
+[`formatter`]: https://terraform-docs.io/user-guide/configuration/formatter/
+[here]: https://golang.org/doc/code.html#GOPATH
+[Homebrew]: https://brew.sh
+[install pre-commit]: https://pre-commit.com/#install
+[`output`]: https://terraform-docs.io/user-guide/configuration/output/
+[releases]: https://github.com/terraform-docs/terraform-docs/releases
+[Scoop]: https://scoop.sh/
+[Slack]: https://slack.terraform-docs.io/
+[terraform-docs GitHub Action]: https://github.com/terraform-docs/gh-actions
+[Terraform module]: https://pkg.go.dev/github.com/terraform-docs/terraform-docs/terraform#Module
+[tfdocs-format-template]: https://github.com/terraform-docs/tfdocs-format-template
+[our website]: https://terraform-docs.io/
+[User Guide]: https://terraform-docs.io/user-guide/introduction/
 <!-- BEGINNING OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 ## Requirements
 
